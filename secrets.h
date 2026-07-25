@@ -1,7 +1,4 @@
-#ifndef SECRETS_H
-#define SECRETS_H
+#pragma once
 
 constexpr const char* WIFI_SSID = "xxxxxxxxxxx";
-constexpr const char* WIFI_PASSWORD = "xxxxxxxxx";
-
-#endif
+constexpr const char* WIFI_PASSWORD = "xxxxxxxxxxxxx";

@@ -14,11 +14,14 @@ static TaskHandle_t audioTaskHandle = nullptr;
 
 static portMUX_TYPE metadataMux = portMUX_INITIALIZER_UNLOCKED;
 
-static AudioMetadata currentMetadata = { "", "Aguardando informacoes...", "---", "-- ---" };
+static AudioMetadata currentMetadata = { "", "Aguardando informacoes...", "---", "--- kbps" };
 
 static volatile bool metadataChanged = true;
 
 static volatile uint8_t currentVolume = AUDIO_VOLUME;
+
+// Byte alto: canal esquerdo. Byte baixo: canal direito.
+static volatile uint16_t currentVULevel = 0;
 
 static portMUX_TYPE controlMux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -49,7 +52,7 @@ static void setPlayerStatus(const char* status) {
 
   portENTER_CRITICAL(&metadataMux);
 
-  strlcpy(currentMetadata.artist, stations[currentStationIndex].name, sizeof(currentMetadata.artist));
+  currentMetadata.artist[0] = '\0';
   strlcpy(currentMetadata.title, status, sizeof(currentMetadata.title));
 
   currentMetadata.codec[0] = '\0';
@@ -73,6 +76,7 @@ static void setPlayerTitle(const char* title) {
 
 static void audioTask(void* parameter) {
   bool connected = audio.connecttohost(stations[currentStationIndex].url);
+  uint32_t lastVURead = 0;
 
   playing = connected;
 
@@ -132,8 +136,7 @@ static void audioTask(void* parameter) {
 
         Serial.printf("[Audio] Reconexao: %s\n", reconnected ? "OK" : "FALHOU");
       } else {
-        Serial.println(
-          "[Audio] Reconexao ignorada: player parado");
+        Serial.println("[Audio] Reconexao ignorada: player parado");
       }
     }
 
@@ -207,7 +210,7 @@ static void audioTask(void* parameter) {
 
         portENTER_CRITICAL(&metadataMux);
 
-        strlcpy(currentMetadata.artist, stations[currentStationIndex].name, sizeof(currentMetadata.artist));
+        currentMetadata.artist[0] = '\0';
         strlcpy(currentMetadata.title, "Aguardando informacoes...", sizeof(currentMetadata.title));
 
         currentMetadata.codec[0] = '\0';
@@ -259,8 +262,16 @@ static void audioTask(void* parameter) {
     if (playing) {
       audio.loop();
 
+      uint32_t now = millis();
+
+      if (now - lastVURead >= 25) {
+        lastVURead = now;
+        currentVULevel = audio.getVUlevel();
+      }
+
       if (!audio.isRunning()) {
         playing = false;
+        currentVULevel = 0;
         lastReconnectAttempt = millis();
 
         if (playbackEnabled) {
@@ -269,6 +280,8 @@ static void audioTask(void* parameter) {
           setPlayerStatus("Stream interrompido");
         }
       }
+    } else {
+      currentVULevel = 0;
     }
 
     vTaskDelay(1);
@@ -307,7 +320,7 @@ void audioPlayerSetInitialStation(size_t index) {
 
   portENTER_CRITICAL(&metadataMux);
 
-  strlcpy(currentMetadata.artist, stations[index].name, sizeof(currentMetadata.artist));
+  currentMetadata.artist[0] = '\0';
   strlcpy(currentMetadata.title, "Aguardando informacoes...", sizeof(currentMetadata.title));
 
   metadataChanged = true;
@@ -343,6 +356,10 @@ void audioPlayerSetVolume(uint8_t volume) {
 
 uint8_t audioPlayerGetVolume() {
   return currentVolume;
+}
+
+uint16_t audioPlayerGetVULevel() {
+  return currentVULevel;
 }
 
 // --------------------------------------------------
@@ -398,16 +415,12 @@ void audio_showstreamtitle(const char* info) {
     artist = raw.substring(0, separator);
     title = raw.substring(separator + 3);
   } else {
-    artist = stations[currentStationIndex].name;
+    artist = "";
     title = raw;
   }
 
   artist.trim();
   title.trim();
-
-  if (artist.length() == 0) {
-    artist = stations[currentStationIndex].name;
-  }
 
   if (title.length() == 0) {
     title = "Aguardando informacoes...";
@@ -492,8 +505,7 @@ void audio_info(const char* info) {
   } else if (upperMessage.indexOf("OPUS") >= 0) {
     setCodec("OPUS");
 
-  } else if (
-    upperMessage.indexOf("VORBIS") >= 0 || upperMessage.indexOf("OGG") >= 0) {
+  } else if (upperMessage.indexOf("VORBIS") >= 0 || upperMessage.indexOf("OGG") >= 0) {
     setCodec("OGG");
 
   } else if (upperMessage.indexOf("WAV") >= 0) {

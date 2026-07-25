@@ -15,6 +15,7 @@ void audioPlayerStart();
 
 void audioPlayerSetVolume(uint8_t volume);
 uint8_t audioPlayerGetVolume();
+uint16_t audioPlayerGetVULevel();
 
 bool audioPlayerReadMetadata(AudioMetadata& metadata);
 bool audioPlayerHasUpdate();

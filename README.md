@@ -4,9 +4,9 @@ Rádio web para a placa **WT32-SC01 Plus**, baseada no ESP32-S3 e equipada com d
 
 O projeto utiliza **LVGL** para a interface, **LovyanGFX** para controlar o display e o touch, e **ESP32-audioI2S** para reproduzir streams de rádio pela saída I2S.
 
-**Versão atual:** `1.0.1`
+**Versão atual:** `1.0.2`
 
-![Interface principal](images/banner_sc01.png)
+![Interface principal](images/interface_v102.png)
 
 ## Recursos
 
@@ -18,34 +18,39 @@ O projeto utiliza **LVGL** para a interface, **LovyanGFX** para controlar o disp
 - Nova tentativa automática de conexão a cada 8 segundos.
 - Comando Stop respeitado durante as tentativas automáticas.
 - Rodapé com ícones de lista, Play/Stop, volume e configurações.
+- VU meter animado com 34 barras brancas acima do rodapé usando os canais esquerdo e direito do áudio.
 - Lista rolável de estações.
-- Controle de volume por gesto horizontal, sem slider.
+- Controle de volume por slider, exibindo somente a porcentagem.
 - Painel de volume fechado automaticamente após 3, 5 ou 10 segundos.
 - Persistência da estação, volume, brilho e tempo de fechamento do painel.
 - RSSI do Wi-Fi em barras e em dBm.
 - Relógio e data sincronizados por NTP.
-- Exibição de codec e bitrate.
+- Temperatura inteira consultada na OpenWeather, com símbolo de grau desenhado e sem a letra `C`.
+- Codec e bitrate exibidos em lados opostos abaixo da linha do cabeçalho.
 - Ajuste de brilho de 10% a 100% com gravação imediata.
 - Botão para abrir o menu de configurações.
 - Painel Sistema com versão, Wi-Fi, IP, memória livre e tempo ligado.
-- Exibição de artista e música com rolagem circular para textos longos.
+- Estação, artista e música centralizados e organizados em sequência.
+- Rolagem circular para textos longos.
 
 ## Interface
 
 ### Tela principal
 
-![Tela principal da versão 1.0.1](images/interface_v101.png)
+![Tela principal da versão 1.0.2](images/interface_v102.png)
 
 A parte superior mostra:
 
 - intensidade do sinal Wi-Fi;
 - horário e data;
-- codec do áudio;
-- bitrate do stream.
+- temperatura atual em fonte 36, sem casas decimais e sem a letra `C`;
+- codec à esquerda e bitrate à direita, logo abaixo da linha do cabeçalho.
 
 O ícone de engrenagem no rodapé abre o menu de configurações. O submenu **Sistema** apresenta informações centralizadas sobre o firmware e a rede.
 
-No centro são mostrados o artista e o título da música. Os quatro ícones do rodapé estão organizados nesta ordem:
+No centro são mostrados, um abaixo do outro, a estação, o artista e o título da música. Quando o stream não informa o artista, essa linha permanece vazia.
+
+Logo acima dos botões, 34 barras estreitas e brancas acompanham os níveis dos canais esquerdo e direito obtidos por `audio.getVUlevel()`. Elas são atualizadas a cada 30 ms e podem chegar a 60 pixels de altura. A animação utiliza ataque rápido e queda suave. Os quatro ícones do rodapé estão organizados nesta ordem:
 
 | Posição | Função |
 | ---: | --- |
@@ -56,7 +61,7 @@ No centro são mostrados o artista e o título da música. Os quatro ícones do 
 
 ### Lista de estações
 
-![Lista de estações da versão 1.0.1](images/station_list_v101.png)
+![Lista de estações da versão 1.0.2](images/station_list_v102.png)
 
 Para abrir a lista, toque no ícone de lista no rodapé. Toque em uma estação para selecioná-la. A estação escolhida começa a tocar e fica salva para a próxima inicialização.
 
@@ -64,15 +69,14 @@ A lista pode ser fechada pelo botão `X`.
 
 ### Controle de volume
 
-![Controle de volume da versão 1.0.1](images/volume_v101.png)
+![Controle de volume da versão 1.0.2](images/volume_v102.png)
 
 Para abrir o painel, toque no ícone de volume no rodapé.
 
 Com o painel aberto:
 
-- mova o dedo para a direita para aumentar o volume;
-- mova o dedo para a esquerda para diminuir o volume;
-- o valor varia de `0` a `21`;
+- arraste o slider para ajustar o volume;
+- somente a porcentagem é mostrada;
 - o painel fecha automaticamente após 3, 5 ou 10 segundos, conforme a configuração;
 - não existe botão de fechar, pois o fechamento é automático.
 
@@ -80,7 +84,7 @@ O volume selecionado também fica salvo para a próxima inicialização.
 
 ### Configurações
 
-![Painel de configurações da versão 1.0.1](images/settings_v101.png)
+![Painel de configurações da versão 1.0.2](images/settings_v102.png)
 
 O ícone de engrenagem abre um painel com:
 
@@ -91,7 +95,7 @@ O ícone de engrenagem abre um painel com:
 
 #### Informações do sistema
 
-![Painel de informações do sistema da versão 1.0.1](images/system_v101.png)
+![Painel de informações do sistema da versão 1.0.2](images/system_v102.png)
 
 O painel **Sistema** mostra, de forma centralizada, a versão do firmware, rede Wi-Fi, endereço IP, memória livre e tempo ligado. O indicador de sinal permanece somente na tela principal.
 
@@ -149,11 +153,12 @@ As seguintes fontes Montserrat precisam estar habilitadas:
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_24 1
 #define LV_FONT_MONTSERRAT_28 1
+#define LV_FONT_MONTSERRAT_36 1
 ```
 
 ## Configuração do Wi-Fi
 
-Crie um arquivo chamado `secrets.h` na pasta do projeto:
+Edite o arquivo `secrets.h` na pasta do projeto:
 
 ```cpp
 #pragma once
@@ -164,11 +169,23 @@ constexpr const char* WIFI_PASSWORD = "SENHA_DA_REDE";
 
 O arquivo já está listado no `.gitignore`. Não coloque credenciais reais no repositório nem em arquivos ZIP destinados à publicação.
 
+## Configuração da temperatura
+
+Edite o arquivo `weather_secrets.h` na pasta do projeto e informe sua chave da OpenWeather:
+
+```cpp
+#pragma once
+
+constexpr const char* OPENWEATHER_API_KEY = "SUA_CHAVE_OPENWEATHER";
+```
+
+A localização já está configurada em `config.h` para Duque de Caxias/RJ. A consulta é executada em segundo plano a cada 10 minutos, sem bloquear a reprodução do áudio ou a interface.
+
 ## Estrutura do projeto
 
 ```text
-SC01_radioweb_lvgl-v1.0.1/
-├── SC01_radioweb_lvgl-v1.0.1.ino
+SC01_radioweb_lvgl-v1.0.2/
+├── SC01_radioweb_lvgl-v1.0.2.ino
 ├── audio_player.cpp
 ├── audio_player.h
 ├── config.h
@@ -183,20 +200,24 @@ SC01_radioweb_lvgl-v1.0.1/
 ├── ST7796U.h
 ├── ui.cpp
 ├── ui.h
+├── weather.cpp
+├── weather.h
+├── weather_secrets.h
 └── images/
 ```
 
 | Arquivo | Responsabilidade |
 | --- | --- |
-| `SC01_radioweb_lvgl-v1.0.1.ino` | Inicialização e coordenação dos módulos |
-| `audio_player.cpp` | Task de áudio, Play/Stop, volume, estações, metadata e reconexão |
+| `SC01_radioweb_lvgl-v1.0.2.ino` | Inicialização e coordenação dos módulos |
+| `audio_player.cpp` | Task de áudio, Play/Stop, volume, níveis VU, estações, metadata e reconexão |
 | `network.cpp` | Wi-Fi, RSSI, NTP, horário e data |
 | `storage.cpp` | Persistência da estação, volume, brilho e configurações com Preferences |
 | `stations.cpp` | Nomes, IDs e URLs das rádios |
-| `ui.cpp` | Interface LVGL, touch, gestos e atualização visual |
+| `ui.cpp` | Interface LVGL, touch, slider e atualização visual |
+| `weather.cpp` | Consulta periódica da temperatura na OpenWeather |
 | `ST7796U.h` | Barramento, display, iluminação e touch no LovyanGFX |
 | `display_config.h` | Rotação e brilho do display |
-| `config.h` | Pinos I2S, volume inicial, fuso horário e versão do firmware |
+| `config.h` | Pinos I2S, fuso horário, localização e versão do firmware |
 
 ## Adicionando estações
 
@@ -238,10 +259,11 @@ As alterações de estação e volume são gravadas aproximadamente 2 segundos a
 1. Instale o suporte às placas ESP32 na Arduino IDE.
 2. Instale as bibliotecas nas versões indicadas em **Dependências**.
 3. Configure o `lv_conf.h`.
-4. Crie o arquivo `secrets.h`.
-5. Abra `SC01_radioweb_lvgl-v1.0.1.ino`.
-6. Selecione a placa e as opções correspondentes ao WT32-SC01 Plus.
-7. Compile e envie o firmware.
+4. Configure o arquivo `secrets.h`.
+5. Configure o arquivo `weather_secrets.h`.
+6. Abra `SC01_radioweb_lvgl-v1.0.2.ino`.
+7. Selecione a placa e as opções correspondentes ao WT32-SC01 Plus.
+8. Compile e envie o firmware.
 
 ## Solução de problemas
 
@@ -268,13 +290,10 @@ Selecione uma tabela de partições com espaço suficiente para o aplicativo. LV
 ## Segurança antes de publicar
 
 - Não publique `secrets.h`.
+- Não publique `weather_secrets.h`.
 - Remova credenciais de arquivos ZIP.
 - Não grave senhas diretamente em `config.h`.
 - Revise URLs e informações pessoais.
-
-## Próxima versão
-
-A consulta da temperatura de Duque de Caxias/RJ pela OpenWeather está reservada para a próxima versão e não faz parte da v1.0.1.
 
 ## Autor
 

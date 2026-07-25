@@ -8,6 +8,7 @@
 #include "network.h"
 #include "stations.h"
 #include "storage.h"
+#include "weather.h"
 
 // --------------------------------------------------
 // DISPLAY E BUFFER
@@ -33,20 +34,26 @@ static uint32_t lastHeaderUpdate = 0;
 // --------------------------------------------------
 
 // Cabeçalho
-static lv_obj_t* rssiBars[4] = { nullptr, nullptr, nullptr, nullptr };
+static lv_obj_t* rssiBars[4] = {
+  nullptr, nullptr, nullptr, nullptr
+};
 
 static lv_obj_t* rssiLabel = nullptr;
 static lv_obj_t* clockLabel = nullptr;
 static lv_obj_t* dateLabel = nullptr;
+static lv_obj_t* temperatureLabel = nullptr;
+static lv_obj_t* temperatureDegreeMark = nullptr;
 static lv_obj_t* codecLabel = nullptr;
 static lv_obj_t* bitrateLabel = nullptr;
 static lv_obj_t* statusLabel = nullptr;
 
-// Artista e música
+// Estação, artista e música
+static lv_obj_t* stationNameLabel = nullptr;
 static lv_obj_t* artistLabel = nullptr;
 static lv_obj_t* titleLabel = nullptr;
 static lv_anim_t scrollAnimation;
 static lv_style_t scrollStyle;
+static char lastStationName[96] = "";
 static char lastArtist[128] = "";
 static char lastTitle[160] = "";
 
@@ -61,17 +68,27 @@ static bool stationListOpen = false;
 static bool touchWasPressed = false;
 static lv_obj_t* volumePanel = nullptr;
 static lv_obj_t* volumeTitleLabel = nullptr;
-static lv_obj_t* volumeValueLabel = nullptr;
 static lv_obj_t* volumePercentLabel = nullptr;
-static lv_obj_t* volumeControlArea = nullptr;
-static lv_obj_t* volumeSegments[21] = {};
+static lv_obj_t* volumeSlider = nullptr;
 static bool volumePanelOpen = false;
 static uint32_t volumeLastInteraction = 0;
-static int16_t volumeLastX = 0;
-static int16_t volumeMovementAccumulator = 0;
 static uint8_t volumeCloseSeconds = 3;
 static lv_obj_t* volumeCloseValueLabel = nullptr;
-static constexpr int16_t PIXELS_PER_VOLUME_STEP = 8;
+
+// VU meter acima dos controles inferiores
+static constexpr uint8_t VU_BAR_COUNT = 34;
+static constexpr uint8_t VU_BAR_WIDTH = 4;
+static constexpr uint8_t VU_BAR_MIN_HEIGHT = 3;
+static constexpr uint8_t VU_BAR_MAX_HEIGHT = 54;
+static constexpr int16_t VU_START_X = 72;
+static constexpr int16_t VU_BAR_STEP = 10;
+static constexpr int16_t VU_BASELINE_Y = 274;
+static constexpr uint32_t VU_UPDATE_INTERVAL_MS = 30;
+
+static lv_obj_t* vuBars[VU_BAR_COUNT] = {};
+static uint8_t vuBarHeights[VU_BAR_COUNT] = {};
+static uint32_t lastVUUpdate = 0;
+static uint32_t vuAnimationSeed = 0x13579BDF;
 
 // Configurações e informações do sistema
 static lv_obj_t* settingsPanel = nullptr;
@@ -180,19 +197,41 @@ static void createHeader() {
   lv_obj_set_style_text_font(dateLabel, &lv_font_montserrat_14, LV_PART_MAIN);
   lv_obj_align(dateLabel, LV_ALIGN_TOP_MID, 0, 38);
 
-  // Codec no canto superior direito
+  // Temperatura inteira no canto superior direito
+  temperatureLabel = lv_label_create(lv_scr_act());
+
+  lv_label_set_text(temperatureLabel, "--");
+  lv_obj_set_style_text_color(temperatureLabel, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_text_font(temperatureLabel, &lv_font_montserrat_36, LV_PART_MAIN);
+  lv_obj_align(temperatureLabel, LV_ALIGN_TOP_RIGHT, -18, 10);
+
+  // Símbolo de grau desenhado para não depender dos caracteres da fonte
+  temperatureDegreeMark = lv_obj_create(lv_scr_act());
+
+  lv_obj_set_size(temperatureDegreeMark, 8, 8);
+  lv_obj_set_style_bg_opa(temperatureDegreeMark, LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_set_style_border_color(temperatureDegreeMark, lv_color_white(), LV_PART_MAIN);
+  lv_obj_set_style_border_width(temperatureDegreeMark, 2, LV_PART_MAIN);
+  lv_obj_set_style_radius(temperatureDegreeMark, 4, LV_PART_MAIN);
+  lv_obj_set_style_pad_all(temperatureDegreeMark, 0, LV_PART_MAIN);
+  lv_obj_clear_flag(temperatureDegreeMark, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(temperatureDegreeMark, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_align_to(temperatureDegreeMark, temperatureLabel, LV_ALIGN_OUT_RIGHT_TOP, 2, 8);
+
+  // Codec e bitrate nos lados opostos abaixo da linha
   codecLabel = lv_label_create(lv_scr_act());
 
-  lv_obj_set_style_text_color(codecLabel, lv_color_white(), LV_PART_MAIN);
-  lv_obj_set_style_text_font(codecLabel, &lv_font_montserrat_18, LV_PART_MAIN);
-  lv_obj_align(codecLabel, LV_ALIGN_TOP_RIGHT, -10, 5);
+  lv_label_set_text(codecLabel, "---");
+  lv_obj_set_style_text_color(codecLabel, lv_color_hex(0x44FF66), LV_PART_MAIN);
+  lv_obj_set_style_text_font(codecLabel, &lv_font_montserrat_14, LV_PART_MAIN);
+  lv_obj_set_pos(codecLabel, 12, 66);
 
-  // Bitrate abaixo do codec
   bitrateLabel = lv_label_create(lv_scr_act());
 
+  lv_label_set_text(bitrateLabel, "--- kbps");
   lv_obj_set_style_text_color(bitrateLabel, lv_color_hex(0x44FF66), LV_PART_MAIN);
   lv_obj_set_style_text_font(bitrateLabel, &lv_font_montserrat_14, LV_PART_MAIN);
-  lv_obj_align(bitrateLabel, LV_ALIGN_TOP_RIGHT, -10, 34);
+  lv_obj_align(bitrateLabel, LV_ALIGN_TOP_RIGHT, -12, 66);
 }
 
 static void updateHeader() {
@@ -239,10 +278,22 @@ static void updateHeader() {
 
   lv_label_set_text(codecLabel, metadata.codec[0] != '\0' ? metadata.codec : "---");
   lv_label_set_text(bitrateLabel, metadata.bitrate[0] != '\0' ? metadata.bitrate : "--- kbps");
+
+  char temperatureText[16];
+  float temperature = 0.0f;
+
+  if (weatherGetTemperature(temperature)) {
+    snprintf(temperatureText, sizeof(temperatureText), "%.0f", temperature);
+  } else {
+    strlcpy(temperatureText, "--", sizeof(temperatureText));
+  }
+
+  lv_label_set_text(temperatureLabel, temperatureText);
+  lv_obj_align_to(temperatureDegreeMark, temperatureLabel, LV_ALIGN_OUT_RIGHT_TOP, 2, 8);
 }
 
 // --------------------------------------------------
-// ARTISTA E MÚSICA
+// ESTAÇÃO, ARTISTA E MÚSICA
 // --------------------------------------------------
 
 static void createMetadata() {
@@ -253,22 +304,34 @@ static void createMetadata() {
   lv_style_init(&scrollStyle);
   lv_style_set_anim(&scrollStyle, &scrollAnimation);
 
+  // Estação
+  stationNameLabel = lv_label_create(lv_scr_act());
+
+  lv_label_set_long_mode(stationNameLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
+  lv_obj_set_size(stationNameLabel, 450, 30);
+  lv_obj_set_pos(stationNameLabel, 15, 92);
+  lv_obj_set_style_text_font(stationNameLabel, &lv_font_montserrat_18, LV_PART_MAIN);
+  lv_obj_set_style_text_color(stationNameLabel, lv_color_hex(0x00FFFF), LV_PART_MAIN);
+  lv_obj_set_style_text_align(stationNameLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+  lv_obj_add_style(stationNameLabel, &scrollStyle, LV_STATE_DEFAULT);
+
   // Artista
   artistLabel = lv_label_create(lv_scr_act());
 
   lv_label_set_long_mode(artistLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
-  lv_obj_set_size(artistLabel, 450, 45);
-  lv_obj_set_pos(artistLabel, 15, 105);
+  lv_obj_set_size(artistLabel, 450, 40);
+  lv_obj_set_pos(artistLabel, 15, 128);
   lv_obj_set_style_text_font(artistLabel, &lv_font_montserrat_24, LV_PART_MAIN);
   lv_obj_set_style_text_color(artistLabel, lv_color_white(), LV_PART_MAIN);
   lv_obj_set_style_text_align(artistLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
   lv_obj_add_style(artistLabel, &scrollStyle, LV_STATE_DEFAULT);
+  lv_label_set_text(artistLabel, "");
 
   // Linha entre artista e música
   lv_obj_t* divider = lv_obj_create(lv_scr_act());
 
   lv_obj_set_size(divider, 300, 2);
-  lv_obj_set_pos(divider, 90, 177);
+  lv_obj_set_pos(divider, 90, 174);
   lv_obj_set_style_bg_color(divider, lv_color_hex(0x00FFFF), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(divider, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_border_width(divider, 0, LV_PART_MAIN);
@@ -279,7 +342,7 @@ static void createMetadata() {
 
   lv_label_set_long_mode(titleLabel, LV_LABEL_LONG_SCROLL_CIRCULAR);
   lv_obj_set_size(titleLabel, 450, 40);
-  lv_obj_set_pos(titleLabel, 15, 195);
+  lv_obj_set_pos(titleLabel, 15, 190);
   lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_set_style_text_color(titleLabel, lv_color_hex(0x00FFFF), LV_PART_MAIN);
   lv_obj_set_style_text_align(titleLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -287,6 +350,14 @@ static void createMetadata() {
 }
 
 static void updateMetadata() {
+  size_t stationIndex = audioPlayerGetStationIndex();
+  const char* stationName = stationIndex < STATION_COUNT ? stations[stationIndex].name : "---";
+
+  if (strcmp(stationName, lastStationName) != 0) {
+    strlcpy(lastStationName, stationName, sizeof(lastStationName));
+    lv_label_set_text(stationNameLabel, stationName);
+  }
+
   AudioMetadata metadata;
   audioPlayerReadMetadata(metadata);
 
@@ -377,6 +448,7 @@ static void stationButtonEvent(lv_event_t* event) {
 
   audioPlayerSelectStation(index);
 
+  updateMetadata();
   refreshStationSelection();
   closeStationList();
 }
@@ -584,7 +656,8 @@ static void volumeCloseMinusEvent(lv_event_t* event) {
 
   updateVolumeCloseVisual();
 
-  storageSaveVolumeCloseSeconds(volumeCloseSeconds);
+  storageSaveVolumeCloseSeconds(
+    volumeCloseSeconds);
 }
 
 static void volumeClosePlusEvent(lv_event_t* event) {
@@ -673,6 +746,7 @@ static void createSettingsPanel() {
 
   lv_obj_set_size(settingsPanel, 480, 238);
   lv_obj_set_pos(settingsPanel, 0, 82);
+
   lv_obj_set_style_bg_color(settingsPanel, lv_color_hex(0x0078D4), LV_PART_MAIN);
   lv_obj_set_style_bg_opa(settingsPanel, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_border_width(settingsPanel, 0, LV_PART_MAIN);
@@ -733,6 +807,7 @@ static void createSettingsPanel() {
   lv_obj_set_style_border_width(systemButton, 0, LV_PART_MAIN);
   lv_obj_set_style_outline_width(systemButton, 0, LV_PART_MAIN);
   lv_obj_set_style_shadow_width(systemButton, 0, LV_PART_MAIN);
+
   lv_obj_add_event_cb(systemButton, systemButtonEvent, LV_EVENT_CLICKED, nullptr);
 
   lv_obj_t* systemButtonLabel = lv_label_create(systemButton);
@@ -827,26 +902,15 @@ static void updateVolumeVisual() {
 
   uint8_t percentage = (volume * 100) / 21;
 
-  char volumeText[8];
   char percentageText[12];
 
-  snprintf(volumeText, sizeof(volumeText), "%02u", volume);
   snprintf(percentageText, sizeof(percentageText), "%u%%", percentage);
 
-  lv_label_set_text(volumeValueLabel, volumeText);
   lv_label_set_text(volumePercentLabel, percentageText);
   lv_label_set_text(volumeTitleLabel, volume == 0 ? "VOLUME - MUDO" : "VOLUME");
 
-  for (uint8_t i = 0; i < 21; i++) {
-    lv_color_t color;
-
-    if (i < volume) {
-      color = i >= 17 ? lv_color_hex(0xFFFF00) : lv_color_hex(0x00FFFF);
-    } else {
-      color = lv_color_hex(0x003B73);
-    }
-
-    lv_obj_set_style_bg_color(volumeSegments[i], color, LV_PART_MAIN);
+  if (volumeSlider != nullptr) {
+    lv_slider_set_value(volumeSlider, volume, LV_ANIM_OFF);
   }
 }
 
@@ -857,7 +921,6 @@ static void closeVolumePanel() {
 
   volumePanelOpen = false;
   volumeLastInteraction = 0;
-  volumeMovementAccumulator = 0;
 
   lv_obj_add_flag(volumePanel, LV_OBJ_FLAG_HIDDEN);
 }
@@ -869,7 +932,6 @@ static void openVolumePanel() {
 
   volumePanelOpen = true;
   volumeLastInteraction = millis();
-  volumeMovementAccumulator = 0;
 
   updateVolumeVisual();
 
@@ -877,70 +939,24 @@ static void openVolumePanel() {
   lv_obj_move_foreground(volumePanel);
 }
 
-static void volumeControlEvent(lv_event_t* event) {
-
+static void volumeSliderEvent(lv_event_t* event) {
   lv_event_code_t code = lv_event_get_code(event);
-  lv_indev_t* input = lv_indev_get_act();
 
-  if (input == nullptr) {
+  if (
+    code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING || code == LV_EVENT_RELEASED || code == LV_EVENT_VALUE_CHANGED) {
+    volumeLastInteraction = millis();
+  }
+
+  if (code != LV_EVENT_VALUE_CHANGED) {
     return;
   }
 
-  lv_point_t point;
-  lv_indev_get_point(input, &point);
+  lv_obj_t* slider = lv_event_get_target(event);
 
-  if (code == LV_EVENT_PRESSED) {
-    volumeLastX = point.x;
-    volumeMovementAccumulator = 0;
-    volumeLastInteraction = millis();
-    return;
-  }
+  uint8_t volume = static_cast<uint8_t>(lv_slider_get_value(slider));
 
-  if (code == LV_EVENT_PRESSING) {
-    int16_t deltaX = point.x - volumeLastX;
-
-    volumeLastX = point.x;
-
-    volumeMovementAccumulator += deltaX;
-
-    int16_t volume = audioPlayerGetVolume();
-
-    bool changed = false;
-
-    while (volumeMovementAccumulator >= PIXELS_PER_VOLUME_STEP) {
-
-      volumeMovementAccumulator -= PIXELS_PER_VOLUME_STEP;
-
-      if (volume < 21) {
-        volume++;
-        changed = true;
-      }
-    }
-
-    while (volumeMovementAccumulator <= -PIXELS_PER_VOLUME_STEP) {
-
-      volumeMovementAccumulator += PIXELS_PER_VOLUME_STEP;
-
-      if (volume > 0) {
-        volume--;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      audioPlayerSetVolume(static_cast<uint8_t>(volume));
-
-      updateVolumeVisual();
-    }
-
-    volumeLastInteraction = millis();
-    return;
-  }
-
-  if (code == LV_EVENT_RELEASED) {
-    volumeMovementAccumulator = 0;
-    volumeLastInteraction = millis();
-  }
+  audioPlayerSetVolume(volume);
+  updateVolumeVisual();
 }
 
 static void createVolumePanel() {
@@ -963,66 +979,129 @@ static void createVolumePanel() {
   lv_obj_set_style_text_color(volumeTitleLabel, lv_color_white(), LV_PART_MAIN);
   lv_obj_align(volumeTitleLabel, LV_ALIGN_TOP_MID, 0, 12);
 
-  // Valor do volume
-  volumeValueLabel = lv_label_create(volumePanel);
-
-  lv_obj_set_style_text_font(volumeValueLabel, &lv_font_montserrat_28, LV_PART_MAIN);
-  lv_obj_set_style_text_color(volumeValueLabel, lv_color_white(), LV_PART_MAIN);
-  lv_obj_align(volumeValueLabel, LV_ALIGN_CENTER, 0, -42);
-
-  // Porcentagem
+  // Somente a porcentagem fica visível
   volumePercentLabel = lv_label_create(volumePanel);
 
-  lv_obj_set_style_text_font(volumePercentLabel, &lv_font_montserrat_18, LV_PART_MAIN);
+  lv_obj_set_style_text_font(volumePercentLabel, &lv_font_montserrat_28, LV_PART_MAIN);
   lv_obj_set_style_text_color(volumePercentLabel, lv_color_hex(0x00FFFF), LV_PART_MAIN);
-  lv_obj_align(volumePercentLabel, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_align(volumePercentLabel, LV_ALIGN_CENTER, 0, -35);
 
-  // Símbolos
+  // Símbolos de referência
   lv_obj_t* minusLabel = lv_label_create(volumePanel);
 
   lv_label_set_text(minusLabel, "-");
   lv_obj_set_style_text_font(minusLabel, &lv_font_montserrat_24, LV_PART_MAIN);
   lv_obj_set_style_text_color(minusLabel, lv_color_white(), LV_PART_MAIN);
-  lv_obj_set_pos(minusLabel, 55, 178);
+  lv_obj_set_pos(minusLabel, 42, 176);
 
   lv_obj_t* plusLabel = lv_label_create(volumePanel);
 
   lv_label_set_text(plusLabel, "+");
   lv_obj_set_style_text_font(plusLabel, &lv_font_montserrat_24, LV_PART_MAIN);
   lv_obj_set_style_text_color(plusLabel, lv_color_white(), LV_PART_MAIN);
-  lv_obj_set_pos(plusLabel, 410, 178);
+  lv_obj_set_pos(plusLabel, 421, 176);
 
-  // 21 segmentos
-  constexpr int16_t startX = 93;
-  constexpr int16_t segmentWidth = 10;
-  constexpr int16_t segmentGap = 4;
+  // Slider de 0 a 21, igual ao intervalo aceito pelo áudio
+  volumeSlider = lv_slider_create(volumePanel);
 
-  for (uint8_t i = 0; i < 21; i++) {
-    volumeSegments[i] = lv_obj_create(volumePanel);
+  lv_obj_set_size(volumeSlider, 340, 18);
+  lv_obj_set_pos(volumeSlider, 70, 183);
+  lv_slider_set_range(volumeSlider, 0, 21);
+  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x003B73), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(volumeSlider, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_radius(volumeSlider, 9, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(volumeSlider, lv_color_hex(0x00FFFF), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(volumeSlider, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(volumeSlider, 9, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(volumeSlider, lv_color_white(), LV_PART_KNOB);
+  lv_obj_set_style_bg_opa(volumeSlider, LV_OPA_COVER, LV_PART_KNOB);
+  lv_obj_set_style_border_width(volumeSlider, 0, LV_PART_KNOB);
+  lv_obj_set_style_shadow_width(volumeSlider, 0, LV_PART_KNOB);
 
-    lv_obj_set_size(volumeSegments[i], segmentWidth, 18);
-    lv_obj_set_pos(volumeSegments[i], startX + i * (segmentWidth + segmentGap), 183);
-    lv_obj_set_style_border_width(volumeSegments[i], 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(volumeSegments[i], 2, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(volumeSegments[i], LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_clear_flag(volumeSegments[i], LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(volumeSegments[i], LV_OBJ_FLAG_CLICKABLE);
-  }
-
-  // Área invisível para ajuste horizontal
-  volumeControlArea = lv_obj_create(volumePanel);
-
-  lv_obj_set_size(volumeControlArea, 420, 110);
-  lv_obj_set_pos(volumeControlArea, 30, 125);
-  lv_obj_set_style_bg_opa(volumeControlArea, LV_OPA_TRANSP, LV_PART_MAIN);
-  lv_obj_set_style_border_width(volumeControlArea, 0, LV_PART_MAIN);
-  lv_obj_add_flag(volumeControlArea, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(volumeControlArea, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_add_event_cb(volumeControlArea, volumeControlEvent, LV_EVENT_ALL, nullptr);
+  lv_obj_add_event_cb(volumeSlider, volumeSliderEvent, LV_EVENT_ALL, nullptr);
 
   updateVolumeVisual();
 
   lv_obj_add_flag(volumePanel, LV_OBJ_FLAG_HIDDEN);
+}
+
+// --------------------------------------------------
+// VU METER
+// --------------------------------------------------
+
+static void createVUMeter() {
+  for (uint8_t i = 0; i < VU_BAR_COUNT; i++) {
+    vuBarHeights[i] = VU_BAR_MIN_HEIGHT;
+    vuBars[i] = lv_obj_create(lv_scr_act());
+
+    lv_obj_set_size(vuBars[i], VU_BAR_WIDTH, VU_BAR_MIN_HEIGHT);
+    lv_obj_set_pos(vuBars[i], VU_START_X + i * VU_BAR_STEP, VU_BASELINE_Y - VU_BAR_MIN_HEIGHT);
+    lv_obj_set_style_bg_color(vuBars[i], lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(vuBars[i], LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(vuBars[i], 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(vuBars[i], 4, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(vuBars[i], 0, LV_PART_MAIN);
+    lv_obj_clear_flag(vuBars[i], LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(vuBars[i], LV_OBJ_FLAG_CLICKABLE);
+  }
+}
+
+static void updateVUMeter(uint32_t now) {
+  if (now - lastVUUpdate < VU_UPDATE_INTERVAL_MS) {
+    return;
+  }
+
+  lastVUUpdate = now;
+
+  uint16_t vuLevel = audioPlayerGetVULevel();
+  uint8_t leftLevel = vuLevel >> 8;
+  uint8_t rightLevel = vuLevel & 0x00FF;
+
+  // Alguns streams mono atualizam somente um dos canais.
+  if (leftLevel == 0 && rightLevel > 0) {
+    leftLevel = rightLevel;
+  } else if (rightLevel == 0 && leftLevel > 0) {
+    rightLevel = leftLevel;
+  }
+
+  for (uint8_t i = 0; i < VU_BAR_COUNT; i++) {
+    uint8_t channelLevel = i < VU_BAR_COUNT / 2 ? leftLevel : rightLevel;
+
+    if (channelLevel > 127) {
+      channelLevel = 127;
+    }
+
+    // Pequena variação entre as barras cria o efeito visual do exemplo.
+    vuAnimationSeed = vuAnimationSeed * 1664525UL + 1013904223UL;
+
+    uint8_t variation = 75 + ((vuAnimationSeed >> 24) % 51);
+    uint16_t scaledHeight = static_cast<uint16_t>(channelLevel) * VU_BAR_MAX_HEIGHT * variation / (90UL * 100UL);
+    uint8_t targetHeight = static_cast<uint8_t>(scaledHeight > VU_BAR_MAX_HEIGHT ? VU_BAR_MAX_HEIGHT : scaledHeight);
+
+    if (targetHeight < VU_BAR_MIN_HEIGHT) {
+      targetHeight = VU_BAR_MIN_HEIGHT;
+    }
+
+    uint8_t currentHeight = vuBarHeights[i];
+
+    // Ataque rápido e queda suave.
+    if (targetHeight > currentHeight) {
+      currentHeight += (targetHeight - currentHeight + 1) / 2;
+    } else if (currentHeight > targetHeight) {
+      uint8_t difference = currentHeight - targetHeight;
+
+      currentHeight -= difference > 2 ? 2 : difference;
+    }
+
+    if (currentHeight == vuBarHeights[i]) {
+      continue;
+    }
+
+    vuBarHeights[i] = currentHeight;
+
+    lv_obj_set_size(vuBars[i], VU_BAR_WIDTH, currentHeight);
+    lv_obj_set_pos(vuBars[i], VU_START_X + i * VU_BAR_STEP, VU_BASELINE_Y - currentHeight);
+  }
 }
 
 // --------------------------------------------------
@@ -1090,6 +1169,7 @@ static lv_obj_t* createBottomButton(int16_t x, const char* icon, lv_event_cb_t c
 static void createBottomButtons() {
   // Quatro áreas de toque iguais, distribuídas por toda a largura.
   createBottomButton(20, LV_SYMBOL_LIST, listButtonEvent);
+
   createBottomButton(140, LV_SYMBOL_PLAY, playStopButtonEvent, &playStopButtonLabel);
   createBottomButton(260, LV_SYMBOL_VOLUME_MAX, volumeButtonEvent);
 
@@ -1153,6 +1233,8 @@ void uiBegin() {
   lv_obj_set_style_text_font(statusLabel, &lv_font_montserrat_20, LV_PART_MAIN);
   lv_obj_align(statusLabel, LV_ALIGN_BOTTOM_MID, 0, -50);
 
+
+  createVUMeter();
   createBottomButtons();
   createStationList();
   createVolumePanel();
@@ -1179,8 +1261,10 @@ void uiUpdate() {
   if (now - lastHeaderUpdate >= 1000) {
     lastHeaderUpdate = now;
     updateHeader();
+    updateMetadata();
     updateSystemInfo();
   }
+
 
   if (
     volumePanelOpen && !touchWasPressed && now - volumeLastInteraction >= volumeCloseSeconds * 1000UL) {
@@ -1188,6 +1272,7 @@ void uiUpdate() {
   }
 
   updatePlayStopButton();
+  updateVUMeter(now);
 
   lv_timer_handler();
 }

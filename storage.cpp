@@ -50,25 +50,17 @@ void storageBegin() {
   pendingStation = savedStation;
   pendingVolume = savedVolume;
 
-  savedBrightness =
-    preferences.getUChar("brightness", 70);
+  savedBrightness = preferences.getUChar("brightness", 70);
 
-  if (
-    savedBrightness < 10 || savedBrightness > 100) {
+  if (savedBrightness < 10 || savedBrightness > 100) {
     savedBrightness = 70;
   }
 
-  Serial.printf(
-    "[Storage] Estacao: %u, volume: %u, brilho: %u%%\n",
-    savedStation,
-    savedVolume,
-    savedBrightness);
+  Serial.printf("[Storage] Estacao: %u, volume: %u, brilho: %u%%\n", savedStation, savedVolume, savedBrightness);
 
-  savedVolumeCloseSeconds =
-    preferences.getUChar("vol-close", 3);
+  savedVolumeCloseSeconds = preferences.getUChar("vol-close", 3);
 
-  if (
-    savedVolumeCloseSeconds != 3 && savedVolumeCloseSeconds != 5 && savedVolumeCloseSeconds != 10) {
+  if (savedVolumeCloseSeconds != 3 && savedVolumeCloseSeconds != 5 && savedVolumeCloseSeconds != 10) {
     savedVolumeCloseSeconds = 3;
   }
 }
@@ -170,8 +162,7 @@ void storageSaveVolumeCloseSeconds(uint8_t seconds) {
     return;
   }
 
-  if (
-    seconds != 3 && seconds != 5 && seconds != 10) {
+  if (seconds != 3 && seconds != 5 && seconds != 10) {
     return;
   }
 
