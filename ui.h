@@ -9,6 +9,8 @@ void uiUpdate();
 void uiShowStatus(const char* message);
 void uiClearStatus();
 
-bool uiIsStationListOpen();
+void uiSetBrightness(uint8_t brightness);
+
+void uiSetVolumeCloseSeconds(uint8_t seconds);
 
 #endif

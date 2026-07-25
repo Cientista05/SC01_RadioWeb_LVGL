@@ -523,20 +523,12 @@ size_t audioPlayerGetStationIndex() {
   return currentStationIndex;
 }
 
-const char* audioPlayerGetStationName() {
-  return stations[currentStationIndex].name;
-}
-
 void audioPlayerToggle() {
   portENTER_CRITICAL(&controlMux);
 
   toggleRequested = true;
 
   portEXIT_CRITICAL(&controlMux);
-}
-
-bool audioPlayerIsPlaying() {
-  return playing;
 }
 
 bool audioPlayerIsEnabled() {

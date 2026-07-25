@@ -4,6 +4,10 @@
 
 #include "config.h"
 
+// --------------------------------------------------
+// ESTADO INTERNO
+// --------------------------------------------------
+
 static Preferences preferences;
 
 static bool storageReady = false;
@@ -18,6 +22,14 @@ static uint8_t pendingVolume = AUDIO_VOLUME;
 static uint32_t lastSettingsChange = 0;
 
 static constexpr uint32_t SAVE_DELAY = 2000;
+
+static uint8_t savedBrightness = 70;
+
+static uint8_t savedVolumeCloseSeconds = 3;
+
+// --------------------------------------------------
+// INICIALIZAÇÃO E LEITURA
+// --------------------------------------------------
 
 void storageBegin() {
   storageReady = preferences.begin("web-radio", false);
@@ -38,7 +50,27 @@ void storageBegin() {
   pendingStation = savedStation;
   pendingVolume = savedVolume;
 
-  Serial.printf("[Storage] Estacao: %u, volume: %u\n", savedStation, savedVolume);
+  savedBrightness =
+    preferences.getUChar("brightness", 70);
+
+  if (
+    savedBrightness < 10 || savedBrightness > 100) {
+    savedBrightness = 70;
+  }
+
+  Serial.printf(
+    "[Storage] Estacao: %u, volume: %u, brilho: %u%%\n",
+    savedStation,
+    savedVolume,
+    savedBrightness);
+
+  savedVolumeCloseSeconds =
+    preferences.getUChar("vol-close", 3);
+
+  if (
+    savedVolumeCloseSeconds != 3 && savedVolumeCloseSeconds != 5 && savedVolumeCloseSeconds != 10) {
+    savedVolumeCloseSeconds = 3;
+  }
 }
 
 size_t storageGetStationIndex() {
@@ -48,6 +80,18 @@ size_t storageGetStationIndex() {
 uint8_t storageGetVolume() {
   return savedVolume;
 }
+
+uint8_t storageGetBrightness() {
+  return savedBrightness;
+}
+
+uint8_t storageGetVolumeCloseSeconds() {
+  return savedVolumeCloseSeconds;
+}
+
+// --------------------------------------------------
+// GRAVAÇÃO ADIADA: ESTAÇÃO E VOLUME
+// --------------------------------------------------
 
 void storageUpdate(size_t stationIndex, uint8_t volume) {
 
@@ -61,9 +105,7 @@ void storageUpdate(size_t stationIndex, uint8_t volume) {
 
   uint16_t station = static_cast<uint16_t>(stationIndex);
 
-  if (
-    station != pendingStation || volume != pendingVolume) {
-
+  if (station != pendingStation || volume != pendingVolume) {
     pendingStation = station;
     pendingVolume = volume;
 
@@ -90,4 +132,59 @@ void storageUpdate(size_t stationIndex, uint8_t volume) {
   settingsDirty = false;
 
   Serial.printf("[Storage] Salvo - estacao: %u, volume: %u\n", savedStation, savedVolume);
+}
+
+// --------------------------------------------------
+// GRAVAÇÃO IMEDIATA: CONFIGURAÇÕES DA INTERFACE
+// --------------------------------------------------
+
+void storageSaveBrightness(uint8_t brightness) {
+  if (!storageReady) {
+    return;
+  }
+
+  if (brightness < 10) {
+    brightness = 10;
+  }
+
+  if (brightness > 100) {
+    brightness = 100;
+  }
+
+  if (brightness == savedBrightness) {
+    return;
+  }
+
+  if (preferences.putUChar("brightness", brightness) == 0) {
+    Serial.println("[Storage] Falha ao salvar brilho");
+    return;
+  }
+
+  savedBrightness = brightness;
+
+  Serial.printf("[Storage] Brilho salvo: %u%%\n", savedBrightness);
+}
+
+void storageSaveVolumeCloseSeconds(uint8_t seconds) {
+  if (!storageReady) {
+    return;
+  }
+
+  if (
+    seconds != 3 && seconds != 5 && seconds != 10) {
+    return;
+  }
+
+  if (seconds == savedVolumeCloseSeconds) {
+    return;
+  }
+
+  if (preferences.putUChar("vol-close", seconds) == 0) {
+    Serial.println("[Storage] Falha ao salvar tempo do volume");
+    return;
+  }
+
+  savedVolumeCloseSeconds = seconds;
+
+  Serial.printf("[Storage] Tempo do volume salvo: %us\n", savedVolumeCloseSeconds);
 }

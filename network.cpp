@@ -5,6 +5,10 @@
 
 #include "config.h"
 
+// --------------------------------------------------
+// CONEXÃO WI-FI
+// --------------------------------------------------
+
 void networkBegin() {
   WiFi.mode(WIFI_STA);
 
@@ -20,6 +24,10 @@ void networkBegin() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
+// --------------------------------------------------
+// ESTADO DA REDE
+// --------------------------------------------------
+
 bool networkIsConnected() {
   return WiFi.status() == WL_CONNECTED;
 }
@@ -31,6 +39,43 @@ int32_t networkGetRSSI() {
 
   return WiFi.RSSI();
 }
+
+bool networkGetIPAddress(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return false;
+  }
+
+  if (!networkIsConnected()) {
+    strlcpy(buffer, "---", bufferSize);
+    return false;
+  }
+
+  IPAddress address = WiFi.localIP();
+
+  snprintf(buffer, bufferSize, "%u.%u.%u.%u", address[0], address[1], address[2], address[3]);
+
+  return true;
+}
+
+bool networkGetSSID(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return false;
+  }
+
+  if (!networkIsConnected()) {
+    strlcpy(buffer, "Offline", bufferSize);
+
+    return false;
+  }
+
+  strlcpy(buffer, WiFi.SSID().c_str(), bufferSize);
+
+  return true;
+}
+
+// --------------------------------------------------
+// DATA E HORÁRIO
+// --------------------------------------------------
 
 void networkConfigureTime() {
   configTzTime(TIMEZONE_INFO, "pool.ntp.org", "time.google.com", "time.cloudflare.com");

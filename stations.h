@@ -12,6 +12,4 @@ struct RadioStation {
 extern const RadioStation stations[];
 extern const size_t STATION_COUNT;
 
-const RadioStation* stationById(uint16_t id);
-
 #endif

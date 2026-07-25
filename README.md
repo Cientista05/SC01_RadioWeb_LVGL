@@ -4,6 +4,8 @@ Rádio web para a placa **WT32-SC01 Plus**, baseada no ESP32-S3 e equipada com d
 
 O projeto utiliza **LVGL** para a interface, **LovyanGFX** para controlar o display e o touch, e **ESP32-audioI2S** para reproduzir streams de rádio pela saída I2S.
 
+**Versão atual:** `1.0.1`
+
 ![Interface principal](images/banner_sc01.png)
 
 ## Recursos
@@ -15,21 +17,24 @@ O projeto utiliza **LVGL** para a interface, **LovyanGFX** para controlar o disp
 - Reconexão do stream após o retorno do Wi-Fi.
 - Nova tentativa automática de conexão a cada 8 segundos.
 - Comando Stop respeitado durante as tentativas automáticas.
-- Play e Stop por toque no centro da tela.
+- Rodapé com ícones de lista, Play/Stop, volume e configurações.
 - Lista rolável de estações.
 - Controle de volume por gesto horizontal, sem slider.
-- Painel de volume fechado automaticamente após 3 segundos.
-- Persistência da última estação e do volume na memória do ESP32.
+- Painel de volume fechado automaticamente após 3, 5 ou 10 segundos.
+- Persistência da estação, volume, brilho e tempo de fechamento do painel.
 - RSSI do Wi-Fi em barras e em dBm.
 - Relógio e data sincronizados por NTP.
 - Exibição de codec e bitrate.
+- Ajuste de brilho de 10% a 100% com gravação imediata.
+- Botão para abrir o menu de configurações.
+- Painel Sistema com versão, Wi-Fi, IP, memória livre e tempo ligado.
 - Exibição de artista e música com rolagem circular para textos longos.
 
 ## Interface
 
 ### Tela principal
 
-![Tela principal](images/interface.png)
+![Tela principal da versão 1.0.1](images/interface_v101.png)
 
 A parte superior mostra:
 
@@ -38,31 +43,57 @@ A parte superior mostra:
 - codec do áudio;
 - bitrate do stream.
 
-No centro são mostrados o artista e o título da música. Um toque na região central alterna entre Play e Stop.
+O ícone de engrenagem no rodapé abre o menu de configurações. O submenu **Sistema** apresenta informações centralizadas sobre o firmware e a rede.
+
+No centro são mostrados o artista e o título da música. Os quatro ícones do rodapé estão organizados nesta ordem:
+
+| Posição | Função |
+| ---: | --- |
+| 1 | Abrir a lista de estações |
+| 2 | Alternar entre Play e Stop |
+| 3 | Abrir o painel de volume |
+| 4 | Abrir as configurações |
 
 ### Lista de estações
 
-![Lista de estações](images/station_list.png)
+![Lista de estações da versão 1.0.1](images/station_list_v101.png)
 
-Para abrir a lista, deslize o dedo de cima para baixo começando no cabeçalho. Toque em uma estação para selecioná-la. A estação escolhida começa a tocar e fica salva para a próxima inicialização.
+Para abrir a lista, toque no ícone de lista no rodapé. Toque em uma estação para selecioná-la. A estação escolhida começa a tocar e fica salva para a próxima inicialização.
 
-A lista pode ser fechada pelo botão `X` ou com um gesto para cima.
+A lista pode ser fechada pelo botão `X`.
 
 ### Controle de volume
 
-![Controle de volume](images/volume.png)
+![Controle de volume da versão 1.0.1](images/volume_v101.png)
 
-Para abrir o painel, deslize o dedo da esquerda para a direita começando próximo à borda esquerda da tela.
+Para abrir o painel, toque no ícone de volume no rodapé.
 
 Com o painel aberto:
 
 - mova o dedo para a direita para aumentar o volume;
 - mova o dedo para a esquerda para diminuir o volume;
 - o valor varia de `0` a `21`;
-- o painel fecha automaticamente 3 segundos após a última interação;
+- o painel fecha automaticamente após 3, 5 ou 10 segundos, conforme a configuração;
 - não existe botão de fechar, pois o fechamento é automático.
 
 O volume selecionado também fica salvo para a próxima inicialização.
+
+### Configurações
+
+![Painel de configurações da versão 1.0.1](images/settings_v101.png)
+
+O ícone de engrenagem abre um painel com:
+
+- ajuste de brilho entre 10% e 100%;
+- escolha do fechamento do volume em 3, 5 ou 10 segundos;
+- acesso ao painel **Sistema**;
+- botão `X` para fechar.
+
+#### Informações do sistema
+
+![Painel de informações do sistema da versão 1.0.1](images/system_v101.png)
+
+O painel **Sistema** mostra, de forma centralizada, a versão do firmware, rede Wi-Fi, endereço IP, memória livre e tempo ligado. O indicador de sinal permanece somente na tela principal.
 
 ## Hardware
 
@@ -136,8 +167,8 @@ O arquivo já está listado no `.gitignore`. Não coloque credenciais reais no r
 ## Estrutura do projeto
 
 ```text
-SC01_radioweb_lvgl/
-├── SC01_radioweb_lvgl.ino
+SC01_radioweb_lvgl-v1.0.1/
+├── SC01_radioweb_lvgl-v1.0.1.ino
 ├── audio_player.cpp
 ├── audio_player.h
 ├── config.h
@@ -157,15 +188,15 @@ SC01_radioweb_lvgl/
 
 | Arquivo | Responsabilidade |
 | --- | --- |
-| `SC01_radioweb_lvgl.ino` | Inicialização e coordenação dos módulos |
+| `SC01_radioweb_lvgl-v1.0.1.ino` | Inicialização e coordenação dos módulos |
 | `audio_player.cpp` | Task de áudio, Play/Stop, volume, estações, metadata e reconexão |
 | `network.cpp` | Wi-Fi, RSSI, NTP, horário e data |
-| `storage.cpp` | Persistência da estação e do volume com Preferences |
+| `storage.cpp` | Persistência da estação, volume, brilho e configurações com Preferences |
 | `stations.cpp` | Nomes, IDs e URLs das rádios |
 | `ui.cpp` | Interface LVGL, touch, gestos e atualização visual |
 | `ST7796U.h` | Barramento, display, iluminação e touch no LovyanGFX |
 | `display_config.h` | Rotação e brilho do display |
-| `config.h` | Pinos I2S, volume inicial e fuso horário |
+| `config.h` | Pinos I2S, volume inicial, fuso horário e versão do firmware |
 
 ## Adicionando estações
 
@@ -193,7 +224,7 @@ A interface armazena até 32 botões de estação. Para utilizar mais estações
 ## Funcionamento do player
 
 1. A interface é iniciada imediatamente.
-2. A estação e o volume salvos são restaurados.
+2. A estação, o volume, o brilho e as configurações salvas são restaurados.
 3. O Wi-Fi inicia a conexão sem bloquear a tela.
 4. Após a conexão, a task de áudio é criada no core 0.
 5. Comandos da interface são processados pela task de áudio.
@@ -208,7 +239,7 @@ As alterações de estação e volume são gravadas aproximadamente 2 segundos a
 2. Instale as bibliotecas nas versões indicadas em **Dependências**.
 3. Configure o `lv_conf.h`.
 4. Crie o arquivo `secrets.h`.
-5. Abra `SC01_radioweb_lvgl.ino`.
+5. Abra `SC01_radioweb_lvgl-v1.0.1.ino`.
 6. Selecione a placa e as opções correspondentes ao WT32-SC01 Plus.
 7. Compile e envie o firmware.
 
@@ -240,6 +271,10 @@ Selecione uma tabela de partições com espaço suficiente para o aplicativo. LV
 - Remova credenciais de arquivos ZIP.
 - Não grave senhas diretamente em `config.h`.
 - Revise URLs e informações pessoais.
+
+## Próxima versão
+
+A consulta da temperatura de Duque de Caxias/RJ pela OpenWeather está reservada para a próxima versão e não faz parte da v1.0.1.
 
 ## Autor
 

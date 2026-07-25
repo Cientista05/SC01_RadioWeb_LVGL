@@ -6,6 +6,8 @@
 void networkBegin();
 bool networkIsConnected();
 int32_t networkGetRSSI();
+bool networkGetIPAddress(char* buffer, size_t bufferSize);
+bool networkGetSSID(char* buffer, size_t bufferSize);
 
 void networkConfigureTime();
 bool networkGetTime(char* buffer, size_t bufferSize);

@@ -40,13 +40,3 @@ const RadioStation stations[] = {
 };
 
 const size_t STATION_COUNT = sizeof(stations) / sizeof(stations[0]);
-
-const RadioStation* stationById(uint16_t id) {
-  for (size_t i = 0; i < STATION_COUNT; i++) {
-    if (stations[i].id == id) {
-      return &stations[i];
-    }
-  }
-
-  return nullptr;
-}
